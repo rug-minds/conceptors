@@ -9,14 +9,14 @@ This repository contains an implementation of conceptors with echo state network
 - [x] Basic implementation of "standard" conceptors
    - [ ] Store multiple one-dimensional patterns in a network using conceptors, then reproduce their dynamics without input: compute conceptors, then load patterns
    - [ ] Basic logic operations to morph different conceptors
-[ ] Add online training of conceptors
-[ ] Basic implementation of autoconceptors
-[ ] Basic implementation of random feature conceptors
-[ ] Basic implementation of diagonal conceptors
-[ ] Building up more complex, modular architectures
-   [ ] Implement the de-noising & classification task
-   [ ] Attending to a signal in a mixture
-   [ ] Equalizing arbitrary filters on signals
+- [ ] Add online training of conceptors
+- [ ] Basic implementation of autoconceptors
+- [ ] Basic implementation of random feature conceptors
+- [ ] Basic implementation of diagonal conceptors
+- [ ] Building up more complex, modular architectures
+   - [ ] Implement the de-noising & classification task
+   - [ ] Attending to a signal in a mixture
+   - [ ] Equalizing arbitrary filters on signals
 
 ## Installation
 
