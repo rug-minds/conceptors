@@ -5,8 +5,8 @@ This repository contains an implementation of conceptors with echo state network
 
 ## Roadmap
 
-- [ ] Basic implementation of echo state networks
-- [x] Basic implementation of "standard" conceptors
+- [x] Basic implementation of echo state networks
+- [ ] Basic implementation of "standard" conceptors
    - [ ] Store multiple one-dimensional patterns in a network using conceptors, then reproduce their dynamics without input: compute conceptors, then load patterns
    - [ ] Basic logic operations to morph different conceptors
 - [ ] Add online training of conceptors
