@@ -4,7 +4,30 @@ TODO:
 - add tests?
 """
 from __future__ import annotations
+from typing import NamedTuple
 import jax.numpy as jnp
+
+
+class ESNConfig(NamedTuple):
+    """A configuration for the ESN.
+
+    :param input_size: dimension of the input
+    :param reservoir_size: number of neurons in the reservoir
+    :param output_size: dimension of the output
+    :param init_weights: function to initialize all weights
+        e.g. jax.random.uniform or jax.random.normal
+    :param rho: desired spectral radius of reservoir weight matrix
+        if None, spectral radius is not modified
+    :param feedback: whether or not to include feedback connections
+        from the output to the reservoir
+        defaults to False
+    """
+    input_size: int
+    reservoir_size: int
+    output_size: int
+    init_weights: function
+    rho: float = None
+    feedback: bool = False
 
 
 class Optimizer:
@@ -62,8 +85,7 @@ class RidgeRegression(Optimizer):
 
 
 class ESN:
-    def __init__(self, key, input_size: int, reservoir_size: int, output_size: int, 
-        init_weights: function, rho: float = None, feedback: bool = False) -> None:
+    def __init__(self, key, config: ESNConfig) -> None:
         """
         Set up echo state network and initialize the weight matrices (and bias).
 
@@ -77,6 +99,7 @@ class ESN:
         :param feedback: bool (False), whether or not to include feedback
             from output to reservoir
         """
+        input_size, reservoir_size, output_size, init_weights, rho, feedback = config
         self.input_size = input_size
         self.reservoir_size = reservoir_size
         self.output_size = output_size
