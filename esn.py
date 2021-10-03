@@ -4,8 +4,12 @@ TODO:
 - add tests?
 """
 from __future__ import annotations
-from typing import NamedTuple
+from typing import Callable, NamedTuple, Optional, Tuple, TypeVar
 import jax.numpy as jnp
+
+
+# type variable for jax array type (varies)
+Array = TypeVar('Array')
 
 
 class ESNConfig(NamedTuple):
@@ -25,8 +29,8 @@ class ESNConfig(NamedTuple):
     input_size: int
     reservoir_size: int
     output_size: int
-    init_weights: function
-    rho: float = None
+    init_weights: Callable
+    rho: Optional[float] = None
     feedback: bool = False
 
 
@@ -42,7 +46,7 @@ class LinearRegression(Optimizer):
     def __init__(self):
         """Initialize linear regression optimizer."""
         super().__init__()
-    
+
     def fit(self, xt, ut, yt_hat):
         """
         Fit the linear regression.
@@ -60,7 +64,7 @@ class LinearRegression(Optimizer):
 class RidgeRegression(Optimizer):
     def __init__(self, alpha: float = 1e-8):
         """
-        Initialize ridge regression optimizer. 
+        Initialize ridge regression optimizer.
 
         :param alpha: regularization parameter.
         """
@@ -80,30 +84,28 @@ class RidgeRegression(Optimizer):
         R = jnp.dot(S.T, S) / xt.shape[0]
         D = yt_hat
         P = jnp.dot(S.T, D)
-        w_out = jnp.dot(jnp.linalg.inv(R + self.alpha * jnp.eye(R.shape[0])), P).T
+        w_out = jnp.dot(
+            jnp.linalg.inv(R + self.alpha * jnp.eye(R.shape[0])),
+            P).T
         return w_out
 
 
 class ESN:
-    def __init__(self, key, config: ESNConfig) -> None:
+    def __init__(self, key: Array, config: ESNConfig) -> None:
         """
-        Set up echo state network and initialize the weight matrices (and bias).
+        Set up ESN and initialize the weight matrices (and bias).
 
-        :param input_size: int, input dimension
-        :param reservoir_size: int, number of neurons in reservoir
-        :param output_size: int, output dimension
-        :param init_weights: function, to initialize all weights
-            e.g. jax.random.uniform or jax.random.normal
-        :param rho: float?, desired spectral radius of reservoir weight matrix
-            if None, the spectral radius is not modified.
-        :param feedback: bool (False), whether or not to include feedback
-            from output to reservoir
+        :param key: JAX PRNG key
+        :param :
         """
-        input_size, reservoir_size, output_size, init_weights, rho, feedback = config
-        self.input_size = input_size
-        self.reservoir_size = reservoir_size
-        self.output_size = output_size
-        self.feedback = feedback
+        (
+            self.input_size,
+            self.reservoir_size,
+            self.output_size,
+            self.init_weights,
+            self.rho,
+            self.feedback
+         ) = config
 
         # PRNG key
         self.key = key
@@ -112,23 +114,24 @@ class ESN:
         K, N, L = self.get_sizes()
 
         # initialize weights
-        self.w_in = init_weights(key, (N, K))
-        self.w = init_weights(key, (N, N))
-        self.b = init_weights(key, (N, 1))
-        self.w_fb = init_weights(key, (N, L)) if feedback else jnp.zeros((N, L))
-        self.w_out = init_weights(key, (L, N + K))
+        self.w_in = self.init_weights(key, (N, K))
+        self.w = self.init_weights(key, (N, N))
+        self.b = self.init_weights(key, (N, 1))
+        self.w_fb = self.init_weights(key, (N, L))\
+            if self.feedback else jnp.zeros((N, L))
+        self.w_out = self.init_weights(key, (L, N + K))
 
         # normalize spectral radius (if desired)
-        if rho is not None:
-            self.normalize_spectral_radius(rho)
-    
+        if self.rho is not None:
+            self.normalize_spectral_radius(self.rho)
+
     def get_sizes(self) -> tuple[int, int, int]:
         """
         Simple helper function to get dimensions of the ESN.
         :return K, N, L: input size, reservoir size, output size
         """
         return self.input_size, self.reservoir_size, self.output_size
-    
+
     def normalize_spectral_radius(self, rho: float = 1.0) -> None:
         """
         Normalize the reservoir's internal weight matrix to a desired
@@ -141,8 +144,9 @@ class ESN:
         current_rho = max(abs(jnp.linalg.eig(self.w)[0]))
         # scale weight matrix to desired spectral radius
         self.w *= rho / current_rho
-    
-    def _forward(self, ut, x_init = None, collect_states = True):
+
+    def _forward(self, ut: Array, x_init: Optional[Callable] = None,
+                 collect_states: bool = True) -> Tuple[Array, ...]:
         """
         Forward pass for training, collects all reservoir states and outputs.
 
@@ -179,8 +183,9 @@ class ESN:
             return xt, yt
         else:
             return yt
-    
-    def harvest_states(self, ut, x_init = None):
+
+    def harvest_states(self, ut: Array, x_init: Optional[Callable] = None)\
+            -> Tuple[Array, Array]:
         """
         Forward pass for training, collects all reservoir states and outputs.
 
@@ -190,9 +195,8 @@ class ESN:
         :return yt: (T, L)
         """
         return self._forward(ut, x_init, collect_states=True)
-        
-    
-    def forward(self, ut, x_init = None):
+
+    def forward(self, ut: Array, x_init: Optional[Callable] = None) -> Array:
         """
         Forward pass function, only collects and returns outputs.
 
@@ -202,7 +206,8 @@ class ESN:
         """
         return self._forward(ut, x_init, collect_states=False)
 
-    def compute_weights(self, xt, ut, yt_hat, optimizer: Optimizer = LinearRegression()):
+    def compute_weights(self, xt: Array, ut: Array, yt_hat: Array,
+                        optimizer: Optimizer = LinearRegression()) -> Array:
         """
         Compute updated weights with the given optimizer.
 
@@ -213,8 +218,9 @@ class ESN:
         :return W: weight matrix of size (N, N)
         """
         return optimizer.fit(xt, ut, yt_hat)
-    
-    def update_weights(self, xt, ut, yt_hat, optimizer: Optimizer = LinearRegression()):
+
+    def update_weights(self, xt: Array, ut: Array, yt_hat: Array,
+                       optimizer: Optimizer = LinearRegression()):
         """
         Compute and update the weights with the given optimizer.
 
