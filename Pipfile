@@ -5,6 +5,8 @@ name = "pypi"
 
 [packages]
 jax = "*"
+matplotlib = "*"
+numpy = "*"
 
 [dev-packages]
 

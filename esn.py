@@ -83,7 +83,7 @@ class RidgeRegression(Optimizer):
         S = jnp.concatenate([xt, ut], axis=1)
         R = jnp.dot(S.T, S) / xt.shape[0]
         D = yt_hat
-        P = jnp.dot(S.T, D)
+        P = jnp.dot(S.T, D) / xt.shape[0]
         w_out = jnp.dot(
             jnp.linalg.inv(R + self.alpha * jnp.eye(R.shape[0])),
             P).T
@@ -146,7 +146,8 @@ class ESN:
         self.w *= rho / current_rho
 
     def _forward(self, ut: Array, x_init: Optional[Callable] = None,
-                 collect_states: bool = True) -> Tuple[Array, ...]:
+                 collect_states: bool = True, C: Optional[Array] = None)\
+            -> Tuple[Array, ...]:
         """
         Forward pass for training, collects all reservoir states and outputs.
 
@@ -173,6 +174,9 @@ class ESN:
             if self.feedback:
                 x += jnp.dot(self.w_fb, y)
             x = jnp.tanh(x)
+            # use conceptor, if given
+            if C is not None:
+                x = jnp.dot(C, x)
             # compute output
             y = jnp.dot(self.w_out, jnp.concatenate([x, u], axis=0))
             yt.append(y)
@@ -184,8 +188,8 @@ class ESN:
         else:
             return yt
 
-    def harvest_states(self, ut: Array, x_init: Optional[Callable] = None)\
-            -> Tuple[Array, Array]:
+    def harvest_states(self, ut: Array, x_init: Optional[Callable] = None,
+                       C: Optional[Array] = None) -> Tuple[Array, Array]:
         """
         Forward pass for training, collects all reservoir states and outputs.
 
@@ -194,9 +198,10 @@ class ESN:
         :return xt: (T, N)
         :return yt: (T, L)
         """
-        return self._forward(ut, x_init, collect_states=True)
+        return self._forward(ut, x_init, collect_states=True, C=C)
 
-    def forward(self, ut: Array, x_init: Optional[Callable] = None) -> Array:
+    def forward(self, ut: Array, x_init: Optional[Callable] = None,
+                C: Optional[Array] = None) -> Array:
         """
         Forward pass function, only collects and returns outputs.
 
@@ -204,7 +209,7 @@ class ESN:
         :param x_init: (N, 1)
         :return yt: (T, L)
         """
-        return self._forward(ut, x_init, collect_states=False)
+        return self._forward(ut, x_init, collect_states=False, C=C)
 
     def compute_weights(self, xt: Array, ut: Array, yt_hat: Array,
                         optimizer: Optimizer = LinearRegression()) -> Array:
