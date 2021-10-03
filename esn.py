@@ -38,7 +38,7 @@ class Optimizer:
     def __init__(self):
         pass
 
-    def fit(self, xt, ut, yt_hat):
+    def fit(self, xt, ut, yt_hat, skip_connections=False):
         pass
 
 
@@ -47,7 +47,7 @@ class LinearRegression(Optimizer):
         """Initialize linear regression optimizer."""
         super().__init__()
 
-    def fit(self, xt, ut, yt_hat):
+    def fit(self, xt, ut, yt_hat, skip_connections=False):
         """
         Fit the linear regression.
 
@@ -56,7 +56,10 @@ class LinearRegression(Optimizer):
         :param yt_hat: desired output (T, L)
         :return W: weight matrix of size (N, N)
         """
-        S = jnp.concatenate([xt, ut], axis=1)
+        if skip_connections:
+            S = jnp.concatenate([xt, ut], axis=1)
+        else:
+            S = xt.copy()
         w_out = jnp.dot(jnp.linalg.pinv(S), yt_hat).T
         return w_out
 
@@ -71,7 +74,7 @@ class RidgeRegression(Optimizer):
         super().__init__()
         self.alpha = alpha
 
-    def fit(self, xt, ut, yt_hat):
+    def fit(self, xt, ut, yt_hat, skip_connections=False):
         """
         Fit the ridge regression.
 
@@ -80,7 +83,10 @@ class RidgeRegression(Optimizer):
         :param yt_hat: desired output (T, L)
         :return W: weight matrix of size (N, N)
         """
-        S = jnp.concatenate([xt, ut], axis=1)
+        if skip_connections:
+            S = jnp.concatenate([xt, ut], axis=1)
+        else:
+            S = xt.copy()
         R = jnp.dot(S.T, S) / xt.shape[0]
         D = yt_hat
         P = jnp.dot(S.T, D) / xt.shape[0]
@@ -91,7 +97,8 @@ class RidgeRegression(Optimizer):
 
 
 class ESN:
-    def __init__(self, key: Array, config: ESNConfig) -> None:
+    def __init__(self, key: Array, config: ESNConfig,
+                 skip_connections=False) -> None:
         """
         Set up ESN and initialize the weight matrices (and bias).
 
@@ -105,7 +112,8 @@ class ESN:
             self.init_weights,
             self.rho,
             self.feedback
-         ) = config
+        ) = config
+        self.skip_connections = skip_connections
 
         # PRNG key
         self.key = key
@@ -119,7 +127,10 @@ class ESN:
         self.b = self.init_weights(key, (N, 1))
         self.w_fb = self.init_weights(key, (N, L))\
             if self.feedback else jnp.zeros((N, L))
-        self.w_out = self.init_weights(key, (L, N + K))
+        if self.skip_connections:
+            self.w_out = self.init_weights(key, (L, N + K))
+        else:
+            self.w_out = self.init_weights(key, (L, N))
 
         # normalize spectral radius (if desired)
         if self.rho is not None:
@@ -145,7 +156,7 @@ class ESN:
         # scale weight matrix to desired spectral radius
         self.w *= rho / current_rho
 
-    def _forward(self, ut: Array, x_init: Optional[Callable] = None,
+    def _forward(self, ut: Array, x_init: Optional[Array] = None,
                  collect_states: bool = True, C: Optional[Array] = None)\
             -> Tuple[Array, ...]:
         """
@@ -178,7 +189,10 @@ class ESN:
             if C is not None:
                 x = jnp.dot(C, x)
             # compute output
-            y = jnp.dot(self.w_out, jnp.concatenate([x, u], axis=0))
+            if self.skip_connections:
+                y = jnp.dot(self.w_out, jnp.concatenate([x, u], axis=0))
+            else:
+                y = jnp.dot(self.w_out, x)
             yt.append(y)
         # collect outputs and reservoir states into matrices
         yt = jnp.concatenate(yt, axis=1).T
@@ -222,7 +236,8 @@ class ESN:
         :param optimizer: optimizer object, e.g. linear regression.
         :return W: weight matrix of size (N, N)
         """
-        return optimizer.fit(xt, ut, yt_hat)
+        return optimizer.fit(xt, ut, yt_hat,
+                             skip_connections=self.skip_connections)
 
     def update_weights(self, xt: Array, ut: Array, yt_hat: Array,
                        optimizer: Optimizer = LinearRegression()):
