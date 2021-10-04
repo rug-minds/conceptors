@@ -20,21 +20,33 @@ This repository contains an implementation of conceptors with echo state network
 
 ## Installation
 
-This repository uses Python 3.8 (you can use [pyenv](https://github.com/pyenv/pyenv) to manage Python versions) and the pip package manager.
+This repository uses Python 3.8 (you can use [pyenv](https://github.com/pyenv/pyenv) to manage Python versions) and the pip package manager. This works on Linux and MacOS. Once pyenv is installed, you can run 
+```
+pyenv install 3.8.0
+pyenv global 3.8.0
+```
+to use Python 3.8.
 
 We recommend using [pipenv](https://pipenv.pypa.io/en/latest/) in order to manage your Python libraries and dependencies. 
-
-Once you have Python 3.8 installed on your machine, you can install the required packages through pipenv:
-
 ```bash
-pipenv shell
+pip install pipenv
+pipenv update
+```
+
+Before installing the packages, you need to download `jaxlib` from source. For Linux, you will need to change the Pipfile to match the followinf filename:
+```bash
+curl -O https://storage.googleapis.com/jax-releases/nocuda/jaxlib-0.1.71-cp38-none-manylinux2010_x86_64.whl
+mv jaxlib-0.1.71-cp38-none-manylinux2010_x86_64.whl jaxlib.whl
+```
+For MacOS:
+```bash
+curl -O https://storage.googleapis.com/jax-releases/mac/jaxlib-0.1.71-cp38-none-macosx_10_9_x86_64.whl
+mv jaxlib-0.1.71-cp38-none-macosx_10_9_x86_64.whl jaxlib.whl
+```
+
+Finally, install the packages with:
+```
 pipenv install
-```
-
-Or without pipenv:
-
-```
-pip install -r requirements.txt
 ```
 
 ## Structure of the Code

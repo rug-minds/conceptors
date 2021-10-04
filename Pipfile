@@ -4,9 +4,10 @@ verify_ssl = true
 name = "pypi"
 
 [packages]
-jax = "*"
 matplotlib = "*"
 numpy = "*"
+jax = "*"
+jaxlib = {path = "./jaxlib-0.1.71-cp38-none-macosx_10_9_x86_64.whl"}
 
 [dev-packages]
 
