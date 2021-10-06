@@ -18,8 +18,12 @@ class ESNConfig(NamedTuple):
     :param input_size: dimension of the input
     :param reservoir_size: number of neurons in the reservoir
     :param output_size: dimension of the output
-    :param init_weights: function to initialize all weights
+    :param init_weights: function to initialize reservoir weights (W)
         e.g. jax.random.uniform or jax.random.normal
+        (key, shape) -> array
+    :param init_weights_in: function to initialize input weights (W_in)
+        e.g. jax.random.uniform or jax.random.normal
+        (key, shape) -> array
     :param rho: desired spectral radius of reservoir weight matrix
         if None, spectral radius is not modified
     :param feedback: whether or not to include feedback connections
@@ -30,6 +34,8 @@ class ESNConfig(NamedTuple):
     reservoir_size: int
     output_size: int
     init_weights: Callable
+    init_weights_in: Callable
+    init_weights_b: Callable
     rho: Optional[float] = None
     feedback: bool = False
 
@@ -110,6 +116,8 @@ class ESN:
             self.reservoir_size,
             self.output_size,
             self.init_weights,
+            self.init_weights_in,
+            self.init_weights_b,
             self.rho,
             self.feedback
         ) = config
@@ -122,9 +130,9 @@ class ESN:
         K, N, L = self.get_sizes()
 
         # initialize weights
-        self.w_in = self.init_weights(key, (N, K))
+        self.w_in = self.init_weights_in(key, (N, K))
         self.w = self.init_weights(key, (N, N))
-        self.b = self.init_weights(key, (N, 1))
+        self.b = self.init_weights_b(key, (N, 1))
         self.w_fb = self.init_weights(key, (N, L))\
             if self.feedback else jnp.zeros((N, L))
         if self.skip_connections:
