@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 
@@ -7,6 +8,10 @@ import matplotlib.pyplot as plt
 
 def sine(T, dt, a=1.0, b=0.0, c=1.0):
     return a * jnp.sin(b * jnp.arange(0, T, dt) - c * jnp.pi).reshape(-1, 1)
+
+
+def sparsify(arr, key, density: float):
+    return arr.at[jax.random.uniform(key, arr.shape) > density].set(0.)
 
 
 def v_harvest_states(esn, ut):

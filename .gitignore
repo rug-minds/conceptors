@@ -131,3 +131,8 @@ dmypy.json
 # IDE (VS Code)
 .vscode
 jaxlib-0.1.71-cp38-none-macosx_10_9_x86_64.whl
+
+# ignore local files
+local/
+# ignore data files as well
+data/

@@ -1,127 +1,37 @@
+"""Implementation of the echo state network.
 """
-TODO:
-- washout
-- add tests?
-"""
+# local imports
 from __future__ import annotations
-from typing import Callable, NamedTuple, Optional, Tuple, TypeVar
+from typing import Callable, Optional, Tuple, TypeVar
+from configs import ESNConfig
+from optimizer import Optimizer, LinearRegression
+import jax
 import jax.numpy as jnp
+# TODO: import numpy as np ?
 
 
 # type variable for jax array type (varies)
 Array = TypeVar('Array')
 
 
-class ESNConfig(NamedTuple):
-    """A configuration for the ESN.
-
-    :param input_size: dimension of the input
-    :param reservoir_size: number of neurons in the reservoir
-    :param output_size: dimension of the output
-    :param init_weights: function to initialize reservoir weights (W)
-        e.g. jax.random.uniform or jax.random.normal
-        (key, shape) -> array
-    :param init_weights_in: function to initialize input weights (W_in)
-        e.g. jax.random.uniform or jax.random.normal
-        (key, shape) -> array
-    :param rho: desired spectral radius of reservoir weight matrix
-        if None, spectral radius is not modified
-    :param feedback: whether or not to include feedback connections
-        from the output to the reservoir
-        defaults to False
-    """
-    input_size: int
-    reservoir_size: int
-    output_size: int
-    init_weights: Callable
-    init_weights_in: Callable
-    init_weights_b: Callable
-    rho: Optional[float] = None
-    feedback: bool = False
-
-
-class Optimizer:
-    def __init__(self):
-        pass
-
-    def fit(self, xt, ut, yt_hat, skip_connections=False):
-        pass
-
-
-class LinearRegression(Optimizer):
-    def __init__(self):
-        """Initialize linear regression optimizer."""
-        super().__init__()
-
-    def fit(self, xt, ut, yt_hat, skip_connections=False):
-        """
-        Fit the linear regression.
-
-        :param xt: collected reservoir states (T, N)
-        :param ut: input (T, K)
-        :param yt_hat: desired output (T, L)
-        :return W: weight matrix of size (N, N)
-        """
-        if skip_connections:
-            S = jnp.concatenate([xt, ut], axis=1)
-        else:
-            S = xt.copy()
-        w_out = jnp.dot(jnp.linalg.pinv(S), yt_hat).T
-        return w_out
-
-
-class RidgeRegression(Optimizer):
-    def __init__(self, alpha: float = 1e-8):
-        """
-        Initialize ridge regression optimizer.
-
-        :param alpha: regularization parameter.
-        """
-        super().__init__()
-        self.alpha = alpha
-
-    def fit(self, xt, ut, yt_hat, skip_connections=False):
-        """
-        Fit the ridge regression.
-
-        :param xt: collected reservoir states (T, N)
-        :param ut: input (T, K)
-        :param yt_hat: desired output (T, L)
-        :return W: weight matrix of size (N, N)
-        """
-        if skip_connections:
-            S = jnp.concatenate([xt, ut], axis=1)
-        else:
-            S = xt.copy()
-        R = jnp.dot(S.T, S) / xt.shape[0]
-        D = yt_hat
-        P = jnp.dot(S.T, D) / xt.shape[0]
-        w_out = jnp.dot(
-            jnp.linalg.inv(R + self.alpha * jnp.eye(R.shape[0])),
-            P).T
-        return w_out
-
-
 class ESN:
-    def __init__(self, key: Array, config: ESNConfig,
-                 skip_connections=False) -> None:
+    def __init__(self, key: Array, config: ESNConfig) -> None:
         """
         Set up ESN and initialize the weight matrices (and bias).
 
         :param key: JAX PRNG key
-        :param :
+        :param config: ESNConfig configuration
         """
-        (
-            self.input_size,
-            self.reservoir_size,
-            self.output_size,
-            self.init_weights,
-            self.init_weights_in,
-            self.init_weights_b,
-            self.rho,
-            self.feedback
-        ) = config
-        self.skip_connections = skip_connections
+        # save configuration
+        self.config = config
+
+        # save some elements of the configuration directly
+        self.input_size = config.input_size
+        self.reservoir_size = config.reservoir_size
+        self.output_size = config.output_size
+        self.spectral_radius = config.spectral_radius
+        self.feedback = config.feedback
+        self.skip_connections = config.skip_connections
 
         # PRNG key
         self.key = key
@@ -129,20 +39,40 @@ class ESN:
         # shortcut
         K, N, L = self.get_sizes()
 
-        # initialize weights
-        self.w_in = self.init_weights_in(key, (N, K))
-        self.w = self.init_weights(key, (N, N))
-        self.b = self.init_weights_b(key, (N, 1))
-        self.w_fb = self.init_weights(key, (N, L))\
-            if self.feedback else jnp.zeros((N, L))
-        if self.skip_connections:
-            self.w_out = self.init_weights(key, (L, N + K))
-        else:
-            self.w_out = self.init_weights(key, (L, N))
+        # initialize input weights
+        args = self.config.init_weights_in__args
+        self.w_in = self.config.init_weights_in(key, (N, K), **args)
+        if self.config.init_weights_in_density < 1.0:
+            density = self.config.init_weights_in_density
+            filter = jax.random.uniform(key, self.w_in.shape) > density
+            self.w_in = self.w_in.at[filter].set(0.)
 
-        # normalize spectral radius (if desired)
-        if self.rho is not None:
-            self.normalize_spectral_radius(self.rho)
+        # initialize internal weights
+        args = self.config.init_weights__args
+        self.w = self.config.init_weights(key, (N, N), **args)
+        if self.config.init_weights_density < 1.0:
+            density = self.config.init_weights_density
+            filter = jax.random.uniform(key, self.w.shape) > density
+            self.w = self.w.at[filter].set(0.)
+
+        # initialize bias
+        args = self.config.init_weights_b__args
+        self.b = self.config.init_weights_b(key, (N, 1), **args)
+
+        # initialize feedback weights (if set, otherwise zero)
+        self.w_fb = self.config.init_weights(key, (N, L))\
+            if self.feedback else jnp.zeros((N, L))
+
+        # initialize output weights (with possible skip connections)
+        # NOTE: the initialization here does not matter (will be trained)
+        if self.skip_connections:
+            self.w_out = self.config.init_weights(key, (L, N + K))
+        else:
+            self.w_out = self.config.init_weights(key, (L, N))
+
+        # normalize spectral radius (if set)
+        if self.spectral_radius is not None:
+            self.normalize_spectral_radius(self.spectral_radius)
 
     def get_sizes(self) -> tuple[int, int, int]:
         """
