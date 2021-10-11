@@ -1,5 +1,8 @@
 """Optimizers for the output weights of the ESN"""
-import jax.numpy as jnp
+try:
+    import jax.numpy as np
+except ImportError:
+    import numpy as np
 
 
 class Optimizer:
@@ -25,10 +28,10 @@ class LinearRegression(Optimizer):
         :return W: weight matrix of size (N, N)
         """
         if skip_connections:
-            S = jnp.concatenate([xt, ut], axis=1)
+            S = np.concatenate([xt, ut], axis=1)
         else:
             S = xt.copy()
-        w_out = jnp.dot(jnp.linalg.pinv(S), yt_hat).T
+        w_out = np.dot(np.linalg.pinv(S), yt_hat).T
         return w_out
 
 
@@ -52,13 +55,13 @@ class RidgeRegression(Optimizer):
         :return W: weight matrix of size (N, N)
         """
         if skip_connections:
-            S = jnp.concatenate([xt, ut], axis=1)
+            S = np.concatenate([xt, ut], axis=1)
         else:
             S = xt.copy()
-        R = jnp.dot(S.T, S) / xt.shape[0]
+        R = np.dot(S.T, S) / xt.shape[0]
         D = yt_hat
-        P = jnp.dot(S.T, D) / xt.shape[0]
-        w_out = jnp.dot(
-            jnp.linalg.inv(R + self.alpha * jnp.eye(R.shape[0])),
+        P = np.dot(S.T, D) / xt.shape[0]
+        w_out = np.dot(
+            np.linalg.inv(R + self.alpha * np.eye(R.shape[0])),
             P).T
         return w_out

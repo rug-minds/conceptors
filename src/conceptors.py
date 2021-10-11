@@ -1,5 +1,8 @@
 """Functions for implementing conceptors"""
-import jax.numpy as jnp
+try:
+    import jax.numpy as np
+except ImportError:
+    import numpy as np
 
 
 def loading_ridge_report(X, X_, B, regularizer: float = 1e-4):
@@ -11,9 +14,9 @@ def loading_ridge_report(X, X_, B, regularizer: float = 1e-4):
     :param regularizer_w: regularizer for ridge regression
     """
     N = X.shape[1]
-    return jnp.dot(
-        jnp.linalg.inv(jnp.dot(X_.T, X_) + regularizer * jnp.eye(N)),
-        jnp.dot(X_.T, jnp.arctanh(X)-B)
+    return np.dot(
+        np.linalg.inv(np.dot(X_.T, X_) + regularizer * np.eye(N)),
+        np.dot(X_.T, np.arctanh(X)-B)
     )
 
 
@@ -24,10 +27,10 @@ def compute_conceptor(X, aperture: float = 10.):
     :param aperture: aperture of conceptor computation, see Jaeger2014
     :return conceptor: array (N, N)
     """
-    R = jnp.dot(X.T, X) / X.shape[0]
-    return jnp.dot(
+    R = np.dot(X.T, X) / X.shape[0]
+    return np.dot(
         R,
-        jnp.linalg.inv(
-            R + aperture ** (-2) * jnp.eye(R.shape[0])
+        np.linalg.inv(
+            R + aperture ** (-2) * np.eye(R.shape[0])
         )
     )
