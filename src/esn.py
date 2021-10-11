@@ -52,6 +52,7 @@ class ESN:
             if JAX:
                 filter = jax.random.uniform(key, self.w_in.shape) > density
             else:
+                # TODO: LEAK! need to use numpy's key here
                 filter = np.random.uniform(self.w_in.shape) > density
             self.w_in = self.w_in.at[filter].set(0.)
 
@@ -63,6 +64,7 @@ class ESN:
             if JAX:
                 filter = jax.random.uniform(key, self.w.shape) > density
             else:
+                # TODO: LEAK! need to use numpy's key here
                 filter = np.random.uniform(self.w.shape) > density
             self.w = self.w.at[filter].set(0.)
 

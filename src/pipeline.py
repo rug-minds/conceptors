@@ -1,3 +1,7 @@
+import json
+import os
+import pickle
+from typing import Any, Callable, Iterable, Tuple
 from utils import concatenate_patterns, v_harvest_states
 from esn import ESN
 from configs import ESNConfig, TrainingConfig
@@ -69,3 +73,47 @@ def pipeline_identity(key, ut, esn_config: ESNConfig, config: TrainingConfig):
         xt_conceptor, yt_conceptor,         # lists
         W_before_loading, esn               # single objects
     )
+
+
+def config_to_dict(config):
+    d_config = config._asdict()
+    for key, val in d_config.items():
+        if callable(val):
+            mod = val.__module__
+            name = val.__name__
+            d_config[key] = f'{mod}.{name}'
+    return d_config
+
+
+def run_experiment(config_list: Iterable[Tuple[ESNConfig, TrainingConfig]],
+                   ut: Any, folder: str, pipeline: Callable, key: Any):
+    """Runs pipeline with different configurations.
+
+    :param config_list: list of (esnConfig, trainingConfig)
+    :param ut: input timeseries
+    :param folder: folder for data
+    :param pipeline: pipeline function
+    :param key: PRNG key
+    """
+    if os.path.exists(folder):
+        print('Folder already exists. Aborting..')
+        return
+    os.makedirs(folder)
+
+    print(f'Starting experiments. Total number: {len(config_list)}')
+    for idx, (esnConfig, trainingConfig) in enumerate(config_list):
+        print('Running experiment {:3}/{:3}'.format(
+            idx+1, len(config_list)
+        ))
+        # save hyperparameters to file
+        d = {
+            'esnConfig': config_to_dict(esnConfig),
+            'trainingConfig': config_to_dict(trainingConfig)
+        }
+        with open(os.path.join(folder, f'exp{idx}.json'), 'w') as f:
+            json.dump(d, f, indent=4)
+        # run pipeline
+        data = pipeline(key, ut, esnConfig, trainingConfig)
+        # save data to file
+        with open(os.path.join(folder, f'exp{idx}.pkl'), 'wb') as f:
+            pickle.dump(data, f)

@@ -1,11 +1,10 @@
 from optimizer import LinearRegression
 from configs import ESNConfig, TrainingConfig
 from pipeline import pipeline_identity
+from pipeline import run_experiment
 from utils import sine
 from conceptors import loading_ridge_report, compute_conceptor
 import jax
-import os
-import pickle
 
 
 def jax_random_normal_wrapper(key, shape, loc=0., scale=1.):
@@ -15,7 +14,7 @@ def jax_random_normal_wrapper(key, shape, loc=0., scale=1.):
 # set up hyperparameter list
 
 config_list = []
-list_reg_loading = [1e-5, 5e-5, 1e-4, 5e-4, 1e-3]
+list_reg_loading = [1e-5, 5e-5, 1e-4, 2.5e-4, 5e-4, 7.5e-4, 1e-3]
 list_aperture = [0.5, 1., 2.5, 5., 10., 15., 20.]
 for aperture in list_aperture:
     for reg_loading in list_reg_loading:
@@ -54,7 +53,7 @@ key = jax.random.PRNGKey(123)
 
 # set up input pattern
 
-T_pattern = 1500
+T_pattern = 2500
 n_pattern = 3
 T = T_pattern * n_pattern
 dt = 0.5  # before: 0.1
@@ -64,38 +63,7 @@ ut = [
     sine(T_pattern*dt, dt, 1.2, 2.2, 1.0)   # before: b=1.8
 ]
 
+# run the experiment
 
-def ensure_folder_exists(experiment_name):
-    folder = '../data'
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-    folder += '/experiments'
-    if not os.path.exists(folder):
-        os.makedirs(folder)
-    folder += f'/{experiment_name}'
-    if os.path.exists(folder):
-        print('experiment folder already exists, please choose another name.')
-        return None
-    else:
-        os.makedirs(folder)
-        return folder
-
-
-if __name__ == '__main__':
-    experiment_name = input('What is the name of this experiment? ')
-    experiment_name = experiment_name.replace(' ', '_')
-    folder = ensure_folder_exists(experiment_name)
-    if folder is not None:
-        print(f'Starting experiments. Total number: {len(config_list)}')
-        for idx, (esnConfig, trainingConfig) in enumerate(config_list):
-            print('Running experiment {:3}/{:3}'.format(
-                idx+1, len(config_list)
-            ))
-            # save hyperparameters to file
-            with open(os.path.join(folder, f'exp{idx}.txt'), 'w') as f:
-                f.write(str(esnConfig) + '\n\n' + str(trainingConfig))
-            # run pipeline
-            data = pipeline_identity(key, ut, esnConfig, trainingConfig)
-            # save data to file
-            with open(os.path.join(folder, f'exp{idx}.pkl'), 'wb') as f:
-                pickle.dump(data, f)
+run_experiment(config_list, ut, '../data/experiments/sines_fast',
+               pipeline_identity, key)
