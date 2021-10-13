@@ -16,7 +16,3 @@ def concatenate_patterns(xt, washout, shift=0):
         xt[i][washout + shift: xt[i].shape[0]+shift, :]
         for i in range(len(xt))
     ])
-
-
-def numpy_random_normal_wrapper(prng, shape, loc=0., scale=1.):
-    return prng.normal(loc=loc, scale=scale, size=shape)

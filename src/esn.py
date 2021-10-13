@@ -39,34 +39,36 @@ class ESN:
 
         # initialize input weights
         args = self.config.init_weights_in__args
-        self.w_in = self.config.init_weights_in(prng, (N, K), **args)
+        fun = getattr(self.prng, self.config.init_weights_in)
+        self.w_in = fun(size=(N, K), **args)
         if self.config.init_weights_in_density < 1.0:
             density = self.config.init_weights_in_density
-            filter = prng.uniform(size=self.w_in.shape) > density
-            self.w_in = self.w_in.at[filter].set(0.)
+            filt = prng.uniform(size=self.w_in.shape) > density
+            self.w_in[filt] = 0.
 
         # initialize internal weights
         args = self.config.init_weights__args
-        self.w = self.config.init_weights(prng, (N, N), **args)
+        fun = getattr(self.prng, self.config.init_weights_in)
+        self.w = fun(size=(N, N), **args)
         if self.config.init_weights_density < 1.0:
             density = self.config.init_weights_density
-            filter = prng.uniform(size=self.w.shape) > density
-            self.w[filter] = 0.
+            filt = prng.uniform(size=self.w.shape) > density
+            self.w[filt] = 0.
 
         # initialize bias
         args = self.config.init_weights_b__args
-        self.b = self.config.init_weights_b(prng, (N, 1), **args)
+        fun = getattr(self.prng, self.config.init_weights_b)
+        self.b = fun(size=(N, 1), **args)
 
         # initialize feedback weights (if set, otherwise zero)
-        self.w_fb = self.config.init_weights(prng, (N, L))\
-            if self.feedback else np.zeros((N, L))
+        fun = getattr(self.prng, self.config.init_weights)
+        self.w_fb = fun(size=(N, L)) if self.feedback else np.zeros((N, L))
 
         # initialize output weights (with possible skip connections)
-        # NOTE: the initialization here does not matter (will be trained)
-        if self.skip_connections:
-            self.w_out = self.config.init_weights(prng, (L, N + K))
-        else:
-            self.w_out = self.config.init_weights(prng, (L, N))
+        # the initialization here does not matter (will be trained)
+        size = (L, N+K) if self.skip_connections else (L, N)
+        fun = getattr(self.prng, self.config.init_weights)
+        self.w_out = fun(size=size)
 
         # normalize spectral radius (if set)
         if self.spectral_radius is not None:
@@ -167,15 +169,16 @@ class ESN:
             S = np.concatenate([xt, ut], axis=1)
         else:
             S = xt.copy()
-        # linear regression
         if alpha is None or alpha == 0.:
+            # linear regression
             w_out = np.dot(np.linalg.pinv(S), yt_hat).T
         else:
+            # ridge regression
             R = np.dot(S.T, S) / xt.shape[0]
             D = yt_hat
             P = np.dot(S.T, D) / xt.shape[0]
             w_out = np.dot(
-                np.linalg.inv(R + self.alpha * np.eye(R.shape[0])), P).T
+                np.linalg.inv(R + alpha * np.eye(R.shape[0])), P).T
         return w_out
 
     def compute_weights(self, xt: Array, ut: Array, yt_hat: Array,
