@@ -45,8 +45,7 @@ class TrainingConfig(NamedTuple):
     """A configuration for training the ESN with conceptors.
 
     :params washout: number of timesteps to wash out from beginning
-    :params optimizer_wout: function that initializes an Optimizer object
-        (see optimizer.py)
+    :params optimizer_wout_alpha: float, regularization for ridge regression
     :params compute_wout__args: arguments to the function (optional)
     :params compute_conceptor: function that computes conceptor
     :params compute_conceptor__args: arguments to the function (optional)
@@ -58,10 +57,10 @@ class TrainingConfig(NamedTuple):
     :params init_states__arg: argument to the function (optional)
     """
     washout: int
-    optimizer_wout: Callable
     compute_conceptor: Callable
     compute_loading: Callable
     init_states: Callable
+    optimizer_wout_alpha: float = None
     init_states__args: dict = {}
     optimizer_wout__args: dict = {}
     compute_loading__args: dict = {}

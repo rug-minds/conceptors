@@ -2,16 +2,17 @@
 """
 # local imports
 from __future__ import annotations
-from typing import Callable, Optional, Tuple, TypeVar
-from configs import ESNConfig
-from optimizer import Optimizer, LinearRegression
+from .utils.config import ESNConfig
+from typing import Any, Callable, Optional, Tuple, TypeVar
 # use JAX if available, otherwise fall back to numpy
 try:
     import jax
     import jax.numpy as np
+    print('Using JAX.')
     JAX = True
 except ImportError:
     import numpy as np
+    print('JAX not available, using numpy.')
     JAX = False
 
 
@@ -20,12 +21,12 @@ Array = TypeVar('Array')
 
 
 class ESN:
-    def __init__(self, key: Array, config: ESNConfig) -> None:
+    def __init__(self, config: ESNConfig, prng: Optional[Any]) -> None:
         """
         Set up ESN and initialize the weight matrices (and bias).
 
-        :param key: JAX PRNG key
         :param config: ESNConfig configuration
+        :param key: either JAX PRNG key, or numpy random generator
         """
         # save configuration
         self.config = config
@@ -39,49 +40,52 @@ class ESN:
         self.skip_connections = config.skip_connections
 
         # PRNG key
-        self.key = key
+        if not JAX:
+            # if using numpy, make sure prng is a Generator object
+            assert isinstance(prng, np.random.Generator)
+        self.prng = prng
 
         # shortcut
         K, N, L = self.get_sizes()
 
         # initialize input weights
         args = self.config.init_weights_in__args
-        self.w_in = self.config.init_weights_in(key, (N, K), **args)
+        self.w_in = self.config.init_weights_in(prng, (N, K), **args)
         if self.config.init_weights_in_density < 1.0:
             density = self.config.init_weights_in_density
             if JAX:
-                filter = jax.random.uniform(key, self.w_in.shape) > density
+                filter = jax.random.uniform(prng, self.w_in.shape) > density
             else:
-                # TODO: LEAK! need to use numpy's key here
-                filter = np.random.uniform(self.w_in.shape) > density
+                filter = prng.uniform(size=self.w_in.shape) > density
+                # filter = np.random.uniform(self.w_in.shape) > density
             self.w_in = self.w_in.at[filter].set(0.)
 
         # initialize internal weights
         args = self.config.init_weights__args
-        self.w = self.config.init_weights(key, (N, N), **args)
+        self.w = self.config.init_weights(prng, (N, N), **args)
         if self.config.init_weights_density < 1.0:
             density = self.config.init_weights_density
             if JAX:
-                filter = jax.random.uniform(key, self.w.shape) > density
+                filter = jax.random.uniform(prng, self.w.shape) > density
+                self.w = self.w.at[filter].set(0.)
             else:
-                # TODO: LEAK! need to use numpy's key here
-                filter = np.random.uniform(self.w.shape) > density
-            self.w = self.w.at[filter].set(0.)
+                filter = prng.uniform(size=self.w.shape) > density
+                self.w[filter] = 0.
 
         # initialize bias
         args = self.config.init_weights_b__args
-        self.b = self.config.init_weights_b(key, (N, 1), **args)
+        self.b = self.config.init_weights_b(prng, (N, 1), **args)
 
         # initialize feedback weights (if set, otherwise zero)
-        self.w_fb = self.config.init_weights(key, (N, L))\
+        self.w_fb = self.config.init_weights(prng, (N, L))\
             if self.feedback else np.zeros((N, L))
 
         # initialize output weights (with possible skip connections)
         # NOTE: the initialization here does not matter (will be trained)
         if self.skip_connections:
-            self.w_out = self.config.init_weights(key, (L, N + K))
+            self.w_out = self.config.init_weights(prng, (L, N + K))
         else:
-            self.w_out = self.config.init_weights(key, (L, N))
+            self.w_out = self.config.init_weights(prng, (L, N))
 
         # normalize spectral radius (if set)
         if self.spectral_radius is not None:
@@ -176,8 +180,25 @@ class ESN:
         """
         return self._forward(ut, x_init, collect_states=False, C=C)
 
+    def _ridge_regression(self, xt: Array, ut: Array, yt_hat: Array,
+                          alpha: Optional[float] = None) -> Array:
+        if self.skip_connections:
+            S = np.concatenate([xt, ut], axis=1)
+        else:
+            S = xt.copy()
+        # linear regression
+        if alpha is None or alpha == 0.:
+            w_out = np.dot(np.linalg.pinv(S), yt_hat).T
+        else:
+            R = np.dot(S.T, S) / xt.shape[0]
+            D = yt_hat
+            P = np.dot(S.T, D) / xt.shape[0]
+            w_out = np.dot(
+                np.linalg.inv(R + self.alpha * np.eye(R.shape[0])), P).T
+        return w_out
+
     def compute_weights(self, xt: Array, ut: Array, yt_hat: Array,
-                        optimizer: Optimizer = LinearRegression()) -> Array:
+                        alpha: Optional[float] = None) -> Array:
         """
         Compute updated weights with the given optimizer.
 
@@ -187,11 +208,10 @@ class ESN:
         :param optimizer: optimizer object, e.g. linear regression.
         :return W: weight matrix of size (N, N)
         """
-        return optimizer.fit(xt, ut, yt_hat,
-                             skip_connections=self.skip_connections)
+        return self._ridge_regression(xt, ut, yt_hat, alpha=alpha)
 
     def update_weights(self, xt: Array, ut: Array, yt_hat: Array,
-                       optimizer: Optimizer = LinearRegression()):
+                       alpha: Optional[float] = None):
         """
         Compute and update the weights with the given optimizer.
 
@@ -200,4 +220,4 @@ class ESN:
         :param yt_hat: desired output (T, L)
         :param optimizer: optimizer object, e.g. linear regression.
         """
-        self.w_out = self.compute_weights(xt, ut, yt_hat, optimizer=optimizer)
+        self.w_out = self._ridge_regression(xt, ut, yt_hat, alpha=alpha)

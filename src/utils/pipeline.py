@@ -1,10 +1,11 @@
 import json
 import os
 import pickle
+import matplotlib.pyplot as plt
 from typing import Any, Callable, Iterable, Tuple
 from utils import concatenate_patterns, v_harvest_states
-from esn import ESN
-from configs import ESNConfig, TrainingConfig
+from ..esn import ESN
+from .config import ESNConfig, TrainingConfig
 try:
     import jax.numpy as np
 except ImportError:
@@ -99,6 +100,15 @@ def run_experiment(config_list: Iterable[Tuple[ESNConfig, TrainingConfig]],
         print('Folder already exists. Aborting..')
         return
     os.makedirs(folder)
+
+    _, axs = plt.subplots(4, 1, figsize=(4, 8), sharex=True, sharey=True)
+    for i in range(4):
+        axs[i].plot(ut[i][:20])
+    plt.savefig(os.path.join(folder, 'ut.png'), dpi=200)
+    plt.close()
+
+    with open(os.path.join(folder, 'ut.pkl'), 'wb') as f:
+        pickle.dump(ut, f)
 
     print(f'Starting experiments. Total number: {len(config_list)}')
     for idx, (esnConfig, trainingConfig) in enumerate(config_list):
