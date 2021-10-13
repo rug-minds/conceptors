@@ -12,16 +12,16 @@ except ImportError:
     import numpy as np
 
 
-def pipeline_identity(key, ut, esn_config: ESNConfig, config: TrainingConfig):
+def pipeline_identity(prng, ut, esn_config: ESNConfig, config: TrainingConfig):
     """
     Trains ESN on identity function.
 
-    :param key: PRNG key from JAX
+    :param prng: PRNG, numpy generator
     :param ut: list of input patterns, each of (T, L)
     :param esn_config: ESNConfig tuple
     :param config: TrainingConfig tuple
     """
-    esn = ESN(key, esn_config)
+    esn = ESN(prng, esn_config)
 
     # pass each pattern through network
     xt, yt = v_harvest_states(esn, ut)
@@ -58,8 +58,7 @@ def pipeline_identity(key, ut, esn_config: ESNConfig, config: TrainingConfig):
     for i in range(len(ut)):
         xt_tmp, yt_tmp = esn.harvest_states(
             np.zeros_like(ut[i]),
-            # jax.random.uniform(key, (dim_reservoir, 1))
-            x_init=config.init_states(key, (esn_config.reservoir_size, 1),
+            x_init=config.init_states(prng, (esn_config.reservoir_size, 1),
                                       **config.init_states__args),
             C=Ci[i]
         )
@@ -87,14 +86,14 @@ def config_to_dict(config):
 
 
 def run_experiment(config_list: Iterable[Tuple[ESNConfig, TrainingConfig]],
-                   ut: Any, folder: str, pipeline: Callable, key: Any):
+                   ut: Any, folder: str, pipeline: Callable, prng: Any):
     """Runs pipeline with different configurations.
 
     :param config_list: list of (esnConfig, trainingConfig)
     :param ut: input timeseries
     :param folder: folder for data
     :param pipeline: pipeline function
-    :param key: PRNG key
+    :param prng: PRNG, numpy generator
     """
     if os.path.exists(folder):
         print('Folder already exists. Aborting..')
@@ -123,7 +122,7 @@ def run_experiment(config_list: Iterable[Tuple[ESNConfig, TrainingConfig]],
         with open(os.path.join(folder, f'exp{idx}.json'), 'w') as f:
             json.dump(d, f, indent=4)
         # run pipeline
-        data = pipeline(key, ut, esnConfig, trainingConfig)
+        data = pipeline(prng, ut, esnConfig, trainingConfig)
         # save data to file
         with open(os.path.join(folder, f'exp{idx}.pkl'), 'wb') as f:
             pickle.dump(data, f)

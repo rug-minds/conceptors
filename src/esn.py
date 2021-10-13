@@ -4,19 +4,10 @@
 from __future__ import annotations
 from .utils.config import ESNConfig
 from typing import Any, Callable, Optional, Tuple, TypeVar
-# use JAX if available, otherwise fall back to numpy
-try:
-    import jax
-    import jax.numpy as np
-    print('Using JAX.')
-    JAX = True
-except ImportError:
-    import numpy as np
-    print('JAX not available, using numpy.')
-    JAX = False
+import numpy as np
 
 
-# type variable for jax array type (varies)
+# type variable for array type (varies)
 Array = TypeVar('Array')
 
 
@@ -26,7 +17,7 @@ class ESN:
         Set up ESN and initialize the weight matrices (and bias).
 
         :param config: ESNConfig configuration
-        :param key: either JAX PRNG key, or numpy random generator
+        :param prng: numpy random generator
         """
         # save configuration
         self.config = config
@@ -40,9 +31,7 @@ class ESN:
         self.skip_connections = config.skip_connections
 
         # PRNG key
-        if not JAX:
-            # if using numpy, make sure prng is a Generator object
-            assert isinstance(prng, np.random.Generator)
+        assert isinstance(prng, np.random.Generator)
         self.prng = prng
 
         # shortcut
@@ -53,11 +42,7 @@ class ESN:
         self.w_in = self.config.init_weights_in(prng, (N, K), **args)
         if self.config.init_weights_in_density < 1.0:
             density = self.config.init_weights_in_density
-            if JAX:
-                filter = jax.random.uniform(prng, self.w_in.shape) > density
-            else:
-                filter = prng.uniform(size=self.w_in.shape) > density
-                # filter = np.random.uniform(self.w_in.shape) > density
+            filter = prng.uniform(size=self.w_in.shape) > density
             self.w_in = self.w_in.at[filter].set(0.)
 
         # initialize internal weights
@@ -65,12 +50,8 @@ class ESN:
         self.w = self.config.init_weights(prng, (N, N), **args)
         if self.config.init_weights_density < 1.0:
             density = self.config.init_weights_density
-            if JAX:
-                filter = jax.random.uniform(prng, self.w.shape) > density
-                self.w = self.w.at[filter].set(0.)
-            else:
-                filter = prng.uniform(size=self.w.shape) > density
-                self.w[filter] = 0.
+            filter = prng.uniform(size=self.w.shape) > density
+            self.w[filter] = 0.
 
         # initialize bias
         args = self.config.init_weights_b__args

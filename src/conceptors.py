@@ -1,8 +1,5 @@
 """Functions for implementing conceptors"""
-try:
-    import jax.numpy as np
-except ImportError:
-    import numpy as np
+import numpy as np
 
 
 def loading_ridge_report(X, X_, B, regularizer: float = 1e-4):
