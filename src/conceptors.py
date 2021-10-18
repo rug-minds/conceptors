@@ -13,8 +13,8 @@ def loading_ridge_report(X, X_, B, regularizer: float = 1e-4):
     N = X.shape[1]
     return np.dot(
         np.linalg.inv(np.dot(X_.T, X_) + regularizer * np.eye(N)),
-        np.dot(X_.T, np.arctanh(X)-B)
-    )
+        np.dot(X_.T, (np.arctanh(X.T)-B.T).T)
+    ).T
 
 
 def compute_conceptor(X, aperture: float = 10.):
