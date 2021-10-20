@@ -116,8 +116,6 @@ class ESN:
         # time loop
         for t in range(T):
             u = ut[t:t+1, :].T
-            if collect_states:
-                xt.append(x)
             # state update (with or without feedback)
             x = np.dot(self.w_in, u) + np.dot(self.w, x) + self.b
             if self.feedback:
@@ -131,6 +129,9 @@ class ESN:
                 y = np.dot(self.w_out, np.concatenate([x, u], axis=0))
             else:
                 y = np.dot(self.w_out, x)
+            # collect state (if desired) and output
+            if collect_states:
+                xt.append(x)
             yt.append(y)
         # collect outputs and reservoir states into matrices
         yt = np.concatenate(yt, axis=1).T
