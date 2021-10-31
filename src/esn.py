@@ -1,4 +1,4 @@
-"""Implementation of the echo state network.
+"""Implementation of the echo state network...
 """
 # local imports
 from __future__ import annotations
