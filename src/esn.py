@@ -31,8 +31,11 @@ class ESN:
         self.skip_connections = config.skip_connections
 
         # PRNG key
-        assert isinstance(prng, np.random.Generator)
-        self.prng = prng
+        if prng is None:
+            self.prng = np.random.default_rng()
+        else:
+            assert isinstance(prng, np.random.Generator)
+            self.prng = prng
 
         # shortcut
         K, N, L = self.get_sizes()
