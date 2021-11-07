@@ -108,9 +108,9 @@ class TrainingConfig(NamedTuple):
     washout: int
     aperture: float
     wout_regularizer: float
-    #compute_conceptor: Callable
-    #compute_loading: Callable
-    #init_states: Callable
+    compute_conceptor: Optional[Callable] = None
+    compute_loading: Optional[Callable] = None
+    init_states: Optional[Callable] = None
     learning_rate_recall: float = 0
     learning_rate_cue: float = 0
     cue: int = 0

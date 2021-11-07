@@ -44,7 +44,7 @@ class ESN:
         self.prng = prng
 
         # shortcut
-        K, N, N_rfc, L = self.get_sizes()
+        K, N, M, L = self.get_sizes()
 
         # initialize input weights
         args = self.config.init_weights_in__args
@@ -60,7 +60,7 @@ class ESN:
             # matrix of weight g
             args = self.config.init_weights_g__args
             fun = getattr(self.prng, self.config.init_weights_g)
-            self.g = fun(size=(N, N_rfc), **args)
+            self.g = fun(size=(N, M), **args)
             if self.config.init_weights_density < 1.0:
                 density = self.config.init_weights_g_density
                 filt = prng.uniform(size=self.w.shape) > density
@@ -69,7 +69,7 @@ class ESN:
             # matrix of expansion f
             args = self.config.init_weights_f__args
             fun = getattr(self.prng, self.config.init_weights_f)
-            self.f = fun(size=(N_rfc, N), **args)
+            self.f = fun(size=(M, N), **args)
             if self.config.init_weights_density < 1.0:
                 density = self.config.init_weights_f_density
                 filt = prng.uniform(size=self.w.shape) > density
@@ -200,12 +200,12 @@ class ESN:
 
         :param ut: (T, K)
         :param x_init: (N, 1)
-        :param z_init: (N_rfc, 1)
+        :param z_init: (M, 1)
         :return xt: (T, N)
-        :return zt: (T, N_rfc)
+        :return zt: (T, M)
         :return yt: (T, L)
         """
-        _, N, N_rfc, L = self.get_sizes()
+        _, N, M, L = self.get_sizes()
         T = ut.shape[0]
         if collect_states:
             xt = []
@@ -213,7 +213,7 @@ class ESN:
         yt = []
         # initial reservoir state (default: zero)
         x = np.zeros((N, 1)) if x_init is None else x_init.copy()
-        z = np.zeros((N_rfc, 1)) if z_init is None else z_init.copy()
+        z = np.zeros((M, 1)) if z_init is None else z_init.copy()
         y = np.zeros((L, 1))
         # time loop
         for t in range(T):
@@ -254,7 +254,7 @@ class ESN:
         Run the whole procedure of loading and computing the conceptors.
         
         :param ut: (T, K)
-        :return Ci: conceptor matrix full (N,N) or scalar (N_rfc, 1)
+        :return Ci: conceptor matrix full (N,N) or scalar (M, 1)
 
         """
         
@@ -308,7 +308,7 @@ class ESN:
         and more involved than the one for classical non-diagonale conceptor. It is inspired by Jong (2021).
         
         :param ut: (T, K)
-        :return Ci: conceptor matrix full (N,N) or scalar (N_rfc, 1)
+        :return Ci: conceptor matrix full (N,N) or scalar (M, 1)
         
         """
         # Diagonal "trick": initial biais of the input driven reservoir with random conceptor
@@ -394,9 +394,9 @@ class ESN:
             w_out = np.dot(np.linalg.pinv(S), yt_hat).T
         else:
             # ridge regression
-            R = np.dot(S.T, S) #/ xt.shape[0]
+            R = np.dot(S.T, S) 
             D = yt_hat
-            P = np.dot(S.T, D) #/ xt.shape[0]
+            P = np.dot(S.T, D) 
             w_out = np.dot(
                 np.linalg.inv(R + alpha * np.eye(R.shape[0])), P).T
         return w_out
@@ -496,7 +496,7 @@ class ESN:
         else:
             return x, y, C
 
-    def cueing(self, ut: Array, learning_rate: float, aperture: float,
+    def harvest_cueing(self, ut: Array, learning_rate: float, aperture: float,
                x_init: Optional[Array] = None, y_init: Optional[Array] = None)\
             -> Tuple[Array, Array, Array]:
         """
@@ -533,7 +533,7 @@ class ESN:
         return self._auto(ut, learning_rate, aperture, x_init, y_init,
                           collect_states=False, recall=False)
 
-    def recall(self, ut: Array, learning_rate: float, aperture: float,
+    def harvest_recall(self, ut: Array, learning_rate: float, aperture: float,
                x_init: Optional[Array] = None, y_init: Optional[Array] = None,
               C_init: Optional[Array]= None)\
             -> Tuple[Array, Array, Array]:
@@ -611,7 +611,7 @@ class ESN:
         # Cueing
         ut1 = [u[:trainingConfig.washout+trainingConfig.cue, :] for u in ut]
         xt_cue, yt_cue, Ct_cue = list(zip(*[
-            self.cueing(ut1[i][trainingConfig.washout:,:], trainingConfig.learning_rate_cue, trainingConfig.aperture,
+            self.harvest_cueing(ut1[i][trainingConfig.washout:,:], trainingConfig.learning_rate_cue, trainingConfig.aperture,
                     x_init=xt_ini[i][-1,:][np.newaxis].T.copy(),
                     y_init=yt_ini[i][-1,:].copy() ) 
             for i in range(len(ut))
@@ -619,7 +619,7 @@ class ESN:
         
         ut_zero = np.zeros((trainingConfig.recall,1))
         xt_recall, yt_recall, Ct_recall = list(zip(*[
-            self.recall(ut_zero.copy(), trainingConfig.learning_rate_recall, trainingConfig.aperture,
+            self.harvest_recall(ut_zero.copy(), trainingConfig.learning_rate_recall, trainingConfig.aperture,
                     x_init=xt_cue[i][-1,:][np.newaxis].T.copy(), 
                     y_init=yt_cue[i][-1,:].copy(),
                     # Conceptor calculated with correlation matrix during cueing

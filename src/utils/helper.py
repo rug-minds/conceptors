@@ -5,7 +5,7 @@ def n_periodic(n, T, key, minval=-1., maxval=1., snr=0.):
     arr = key.uniform(low=minval, high=maxval, size=(n,))
     arr -= arr.min()
     arr /= arr.max()
-    arr = (arr * 2. - 1.) * 0.9
+    arr = (arr * 2. - 1.)
     arr = np.tile(arr, T // n + 1)[:T].reshape(-1, 1)
     if snr != 0:
        arr = arr + np.random.normal(0, snr, arr.shape)
@@ -13,9 +13,9 @@ def n_periodic(n, T, key, minval=-1., maxval=1., snr=0.):
 
 def n_periodic_jong(nbr ,n, T, snr=0):
     if nbr == 0:
-        arr = np.array([-0.9,-0.8,0.5,0.1,0.9])
+        arr = np.array([-1,-0.8,0.5,0.1,1])
     if nbr == 1:
-        arr = np.array([-0.9,-0.5,0.5,0.4,0.9])
+        arr = np.array([-1,-0.5,0.5,0.4,1])
     if snr != 0:
        arr = arr + np.random.normal(0, snr, arr.shape)
     return np.tile(arr, T // n + 1)[:T].reshape(-1, 1)
