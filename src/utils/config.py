@@ -80,11 +80,11 @@ class ESNConfig(NamedTuple):
     init_weights_b__args: dict = {}
     init_weights_in__args: dict = {}
     # architecture parameter
-    architecture: bool = False
-    top_layer: bool = False
-    random_feature: bool = False
+    is_architecture: bool = False
+    is_top_layer: bool = False
+    is_random_feature: bool = False
     # optional parameters
-    feedback: bool = False
+    has_feedback: bool = False
     skip_connections: bool = False
     spectral_radius: Optional[float] = None
     

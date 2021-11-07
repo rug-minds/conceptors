@@ -2,7 +2,7 @@
 import numpy as np
 
 
-def loading_ridge_report(X, X_, B, regularizer: float = 1e-4):
+def loading_ridge_regression(X, X_, B, regularizer: float = 1e-4):
     """Solving reservoir loading problem with ridge regression.
 
     :param X: state trajectory, shape (T, N)

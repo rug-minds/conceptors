@@ -3,8 +3,8 @@
 # local imports
 from __future__ import annotations
 
-from .utils.config import ESNConfig, TrainingConfig   
-from .conceptors import loading_ridge_report, compute_conceptor, ridge_regression, compute_conceptor_diag
+from .utils.config import ESNConfig, TrainingConfig
+from .conceptors import loading_ridge_regression, compute_conceptor, ridge_regression, compute_conceptor_diag
 from .utils import helper
 
 
@@ -32,11 +32,11 @@ class ESN:
         self.reservoir_size = config.reservoir_size
         self.output_size = config.output_size
         self.spectral_radius = config.spectral_radius
-        self.feedback = config.feedback
+        self.has_feedback = config.has_feedback
         self.skip_connections = config.skip_connections
-        self.architecture = config.architecture
-        self.top_layer = config.top_layer
-        self.random_feature = config.random_feature
+        self.is_architecture = config.is_architecture
+        self.is_top_layer = config.is_top_layer
+        self.is_random_feature = config.is_random_feature
         self.random_feature_size = config.random_feature_size
 
         # PRNG key
@@ -56,7 +56,7 @@ class ESN:
             self.w_in[filt] = 0.
             
         # initialize internal weights
-        if self.random_feature:
+        if self.is_random_feature:
             # matrix of weight g
             args = self.config.init_weights_g__args
             fun = getattr(self.prng, self.config.init_weights_g)
@@ -94,7 +94,7 @@ class ESN:
 
         # initialize feedback weights (if set, otherwise zero)
         fun = getattr(self.prng, self.config.init_weights)
-        self.w_fb = fun(size=(N, L)) if self.feedback else np.zeros((N, L))
+        self.w_fb = fun(size=(N, L)) if self.has_feedback else np.zeros((N, L))
 
         # initialize output weights (with possible skip connections)
         # the initialization here does not matter (will be trained)
@@ -104,10 +104,7 @@ class ESN:
 
         # normalize spectral radius (if set)
         if self.spectral_radius is not None:
-            if self.random_feature:
-                self.normalize_spectral_radius_rfc(self.spectral_radius)
-            else:
-                self.normalize_spectral_radius(self.spectral_radius)
+            self.normalize_spectral_radius(self.spectral_radius)
 
     def get_sizes(self) -> tuple[int, int, int]:
         """
@@ -124,25 +121,17 @@ class ESN:
 
         :param rho: desired spectral radius
         """
-        # compute current spectral radius
-        current_rho = max(abs(np.linalg.eig(self.w)[0]))
-        # scale weight matrix to desired spectral radius
-        self.w *= rho / current_rho
-    
-    def normalize_spectral_radius_rfc(self, rho: float = 1.0) -> None:
-        """
-        Normalize the reservoir's internal weight matrix to a desired
-        spectral radius. This helps to keep the reservoir in a stable
-        regime. See [TODO: reference].
-
-        :param rho: desired spectral radius
-        """
-        # compute current spectral radius
-        current_rho = max(abs(np.linalg.eig(np.dot(self.g,self.f))[0]))
-        # scale weight matrix to desired spectral radius
-        self.f *= np.sqrt(rho / current_rho)
-        self.g *= np.sqrt(rho / current_rho)
-        
+        if self.is_random_feature:
+            # compute current spectral radius
+            current_rho = max(abs(np.linalg.eig(np.dot(self.g, self.f))[0]))
+            # scale weight matrix to desired spectral radius
+            self.f *= np.sqrt(rho / current_rho)
+            self.g *= np.sqrt(rho / current_rho)
+        else:
+            # compute current spectral radius
+            current_rho = max(abs(np.linalg.eig(self.w)[0]))
+            # scale weight matrix to desired spectral radius
+            self.w *= rho / current_rho
 
     def _forward(self, ut: Array, x_init: Optional[Array] = None,
                  collect_states: bool = True, C: Optional[Array] = None)\
@@ -168,7 +157,7 @@ class ESN:
             u = ut[t:t+1, :].T
             # state update (with or without feedback)
             x = np.dot(self.w_in, u) + np.dot(self.w, x) + self.b
-            if self.feedback:
+            if self.has_feedback:
                 x += np.dot(self.w_fb, y)
             x = np.tanh(x)
             # use conceptor, if given
@@ -221,7 +210,7 @@ class ESN:
             # state update (with or without feedback)
             x = np.dot(self.w_in, u) + np.dot(self.g, z) + self.b
             
-            if self.feedback:
+            if self.has_feedback:
                 x += np.dot(self.w_fb, y)
             x = np.tanh(x)
             
@@ -248,7 +237,81 @@ class ESN:
             return xt, zt, yt
         else:
             return yt    
-        
+    
+    def forward(self, ut: Array, x_init: Optional[Callable] = None,
+                z_init: Optional[Array] = None,
+                C: Optional[Array] = None) -> Array:
+        """
+        Forward pass function, only collects and returns outputs.
+
+        :param ut: (T, K)
+        :param x_init: (N, 1)
+        :return yt: (T, L)
+        """
+        if self.is_random_feature:
+            return self._forwardRFC(ut, x_init, z_init, collect_states=False, C=C)
+        else:
+            return self._forward(ut, x_init, collect_states=False, C=C)
+
+    def harvest_states(self, ut: Array, x_init: Optional[Callable] = None, 
+                       z_init: Optional[Array] = None,
+                       C: Optional[Array] = None) -> Tuple[Array, Array]:
+        """
+        Forward pass for training, collects all reservoir states and outputs.
+
+        :param ut: (T, K)
+        :param x_init: (N, 1)
+        :return xt: (T, N)
+        :return yt: (T, L)
+        """
+        if self.is_random_feature:
+            return self._forwardRFC(ut, x_init, z_init, collect_states=True, C=C)
+        else:
+            return self._forward(ut, x_init, collect_states=True, C=C)
+
+    def _wout_ridge_regression(self, xt: Array, ut: Array, yt_hat: Array,
+                          alpha: Optional[float] = None) -> Array:
+        if self.skip_connections:
+            S = np.concatenate([xt, ut], axis=1)
+        else:
+            S = xt.copy()
+        if alpha is None or alpha == 0.:
+            # linear regression
+            w_out = np.dot(np.linalg.pinv(S), yt_hat).T
+        else:
+            # ridge regression
+            R = np.dot(S.T, S) 
+            D = yt_hat
+            P = np.dot(S.T, D) 
+            w_out = np.dot(
+                np.linalg.inv(R + alpha * np.eye(R.shape[0])), P).T
+        return w_out
+
+    def compute_weights(self, xt: Array, ut: Array, yt_hat: Array,
+                        alpha: Optional[float] = None) -> Array:
+        """
+        Compute updated weights with the given optimizer.
+
+        :param xt: collected reservoir states (T, N)
+        :param ut: input (T, K)
+        :param yt_hat: desired output (T, L)
+        :param optimizer: optimizer object, e.g. linear regression.
+        :return W: weight matrix of size (N, N)
+        """
+        return self._wout_ridge_regression(xt, ut, yt_hat, alpha=alpha)
+
+    def update_weights(self, xt: Array, ut: Array, yt_hat: Array,
+                       alpha: Optional[float] = None):
+        """
+        Compute and update the weights with the given optimizer.
+
+        :param xt: collected reservoir states (T, N)
+        :param ut: input (T, K)
+        :param yt_hat: desired output (T, L)
+        :param optimizer: optimizer object, e.g. linear regression.
+        """
+        self.w_out = self._wout_ridge_regression(xt, ut, yt_hat, alpha=alpha)
+    
     def full_procedure(self, ut, trainingConfig: TrainingConfig):  
         """
         Run the whole procedure of loading and computing the conceptors.
@@ -258,14 +321,14 @@ class ESN:
 
         """
         
-        if self.random_feature:
+        if self.is_random_feature:
             xt, zt, yt = list(zip(*map(self.harvest_states, ut)))
             # concatenate patterns along time
             X = helper.concatenate_patterns(xt, trainingConfig.washout)
             U = helper.concatenate_patterns(ut, trainingConfig.washout)
             Y_T = U.copy()
             self.update_weights(X, U, Y_T, alpha=trainingConfig.wout_regularizer)
-            xt_conceptor, zt_conceptor, yt_trained = list(zip(*map(self.harvest_states, ut)))
+            # xt_conceptor, zt_conceptor, yt_trained = list(zip(*map(self.harvest_states, ut)))
             
             Z_ = helper.concatenate_patterns(zt, trainingConfig.washout, shift=-1)
             Z = helper.concatenate_patterns(zt, trainingConfig.washout, shift=0)
@@ -292,7 +355,7 @@ class ESN:
             X_ = helper.concatenate_patterns(xt, trainingConfig.washout, shift=-1)
             B = np.repeat(self.b, X_.shape[0], axis=1).T
         
-            W_loaded = loading_ridge_report(X, X_, B, regularizer=trainingConfig.w_regularizer)
+            W_loaded = loading_ridge_regression(X, X_, B, regularizer=trainingConfig.w_regularizer)
             
             self.w = W_loaded.copy()
         
@@ -351,81 +414,6 @@ class ESN:
         self.update_weights(X, U, Y_T, alpha=trainingConfig.wout_regularizer)
         
         return Ci
-    
-    def harvest_states(self, ut: Array, x_init: Optional[Callable] = None, 
-                       z_init: Optional[Array] = None,
-                       C: Optional[Array] = None) -> Tuple[Array, Array]:
-        """
-        Forward pass for training, collects all reservoir states and outputs.
-
-        :param ut: (T, K)
-        :param x_init: (N, 1)
-        :return xt: (T, N)
-        :return yt: (T, L)
-        """
-        if self.random_feature:
-            return self._forwardRFC(ut, x_init, z_init, collect_states=True, C=C)
-        else:
-            return self._forward(ut, x_init, collect_states=True, C=C)
-
-    def forward(self, ut: Array, x_init: Optional[Callable] = None,
-                z_init: Optional[Array] = None,
-                C: Optional[Array] = None) -> Array:
-        """
-        Forward pass function, only collects and returns outputs.
-
-        :param ut: (T, K)
-        :param x_init: (N, 1)
-        :return yt: (T, L)
-        """
-        if self.random_feature:
-            return self._forwardRFC(ut, x_init, z_init, collect_states=False, C=C)
-        else:
-            return self._forward(ut, x_init, collect_states=False, C=C)
-
-    def _ridge_regression(self, xt: Array, ut: Array, yt_hat: Array,
-                          alpha: Optional[float] = None) -> Array:
-        if self.skip_connections:
-            S = np.concatenate([xt, ut], axis=1)
-        else:
-            S = xt.copy()
-        if alpha is None or alpha == 0.:
-            # linear regression
-            w_out = np.dot(np.linalg.pinv(S), yt_hat).T
-        else:
-            # ridge regression
-            R = np.dot(S.T, S) 
-            D = yt_hat
-            P = np.dot(S.T, D) 
-            w_out = np.dot(
-                np.linalg.inv(R + alpha * np.eye(R.shape[0])), P).T
-        return w_out
-
-    def compute_weights(self, xt: Array, ut: Array, yt_hat: Array,
-                        alpha: Optional[float] = None) -> Array:
-        """
-        Compute updated weights with the given optimizer.
-
-        :param xt: collected reservoir states (T, N)
-        :param ut: input (T, K)
-        :param yt_hat: desired output (T, L)
-        :param optimizer: optimizer object, e.g. linear regression.
-        :return W: weight matrix of size (N, N)
-        """
-        return self._ridge_regression(xt, ut, yt_hat, alpha=alpha)
-
-    def update_weights(self, xt: Array, ut: Array, yt_hat: Array,
-                       alpha: Optional[float] = None):
-        """
-        Compute and update the weights with the given optimizer.
-
-        :param xt: collected reservoir states (T, N)
-        :param ut: input (T, K)
-        :param yt_hat: desired output (T, L)
-        :param optimizer: optimizer object, e.g. linear regression.
-        """
-        self.w_out = self._ridge_regression(xt, ut, yt_hat, alpha=alpha)
-
 
 # Auto-conceptor parts: to factorize (and combined with RCF) after debugged
 
@@ -473,7 +461,7 @@ class ESN:
             # state update (with or without feedback)
             x = np.dot(self.w_in, u) + np.dot(self.w, x) + self.b + loaded_input
 
-            if self.feedback:
+            if self.has_feedback:
                 x += np.dot(self.w_fb, y)
             x = np.tanh(x)
             if recall:
@@ -595,8 +583,7 @@ class ESN:
         
         Y_T = U.copy()
         self.update_weights(X, U, Y_T, alpha=trainingConfig.wout_regularizer)
-        
-        _, yt_trained = list(zip(*map(self.harvest_states, ut)))
+        # _, yt_trained = list(zip(*map(self.harvest_states, ut)))
         
         # Loading the input
         X_ = helper.concatenate_patterns(xt, trainingConfig.washout, shift=-1)
